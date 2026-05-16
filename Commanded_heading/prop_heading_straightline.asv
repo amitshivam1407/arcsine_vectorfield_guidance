@@ -1,0 +1,105 @@
+clear all; close all; clc
+x = -100:1:100;
+k_s = [0.0002 0.002 0.02 0.2];
+%k_s = 0.002 ;
+% kappa = zeros(size(x));
+f1 = figure;
+ax1 = axes;
+f2 = figure;
+ax2 = axes;
+f3 = figure;
+ax3 = axes;
+f4 = figure;
+ax4 = axes;
+kappa = zeros(size(x));
+gama = zeros(size(x));
+kaid = zeros(size(x));
+a = (pi/2).*ones(size(x));
+b = pi.*ones(size(x));
+c = 0.*ones(size(x));
+for i = 1:length(k_s)
+    k1 = k_s(:,i);
+    for j = 1:length(x)
+    if x(:,j) < 0
+        kappa = -((2*k1.*x(:,j))./(1 + k1.*x(:,j).^2).^2);
+        Curvature_prop(j,i) = kappa;
+        gama = 1./(1 + k1.*x(:,j).^2);
+        gamma_d(j,i) = gama ;
+        kaid = asin(gama);
+        kai_d(j,i) = kaid ;
+        epsilon =  asin(gama);
+        epsilon_prop(j,i) = epsilon;
+        
+     else
+        kappa = -((2*k1.*x(:,j))./(1 + k1.*x(:,j).^2).^2);
+        Curvature_prop(j,i) = kappa;
+        gama = 1./(1 + k1.*x(:,j).^2);
+        gamma_d(j,i) = gama ;
+        kaid = (pi - asin(gama));
+        kai_d(j,i) = kaid ;
+        epsilon =  asin(gama);
+        epsilon_prop(j,i) = epsilon;
+    end
+    end
+% figure
+plot(ax1,x,Curvature_prop(:,i),'linewidth',2);hold(ax1, 'on');grid(ax1, 'on')
+ax1.FontSize = 17;
+box on                      % Switch on the box around the axis
+ax1.XColor = 'black';         % Box horizontal lines' color
+ax1.YColor = 'black';         % Box vertical lines' color
+set(ax1,'linewidth',1.5) ;
+xlabel(ax1,'Cross-track error, m','interpreter','latex','Fontsize',17)
+ylabel(ax1,'Curvature,  m $^{-1}$ ','interpreter','latex','Fontsize',17)
+% title(ax1,'\boldmath $ Curvature \ Profile $','interpreter','latex')
+% axis([-10 110 -0.16 0.01])
+
+plot(ax2,x,gamma_d(:,i),'linewidth',2);hold(ax2, 'on');grid(ax2, 'on')
+ax2.FontSize = 16;
+box on                       % Switch on the box around the axis
+ax2.XColor = 'black';         % Box horizontal lines' color
+ax2.YColor = 'black';         % Box vertical lines' color
+set(ax2,'linewidth',1.5) ;
+xlabel(ax2,'Cross-track  error, m','interpreter','latex','Fontsize',17)
+ylabel(ax2,' $ \gamma  $ ','interpreter','latex','Fontsize',17)
+
+plot(ax3,x,kai_d(:,i).*(180/pi),'linewidth',4);hold(ax3, 'on');grid(ax3, 'on')
+ax3.FontSize = 18;
+box on                        % Switch on the box around the axis
+ax3.XColor = 'black';         % Box horizontal lines' color
+ax3.YColor = 'black';         % Box vertical lines' color
+set(ax3,'linewidth',3) ;
+yticks(ax3,[0 45 90 135 180]);
+yticklabels(ax3,{'0','45','90','135','180'});
+xlabel(ax3,'Cross-track error, m','interpreter','latex','Fontsize',23)
+ylabel(ax3,' $ \chi_{\mathrm{d}}, $ deg.','interpreter','latex','Fontsize',23)
+
+
+plot(ax4,x,epsilon_prop(:,i),'linewidth',2);hold(ax4, 'on');grid(ax4, 'on')
+ax4.FontSize = 16;
+box on                      % Switch on the box around the axis
+ax4.XColor = 'black';         % Box horizontal lines' color
+ax4.YColor = 'black';         % Box vertical lines' color
+set(ax4,'linewidth',3) ;
+xlabel(ax4,'Cross-track \ error, $ x, \ $  m','interpreter','latex','Fontsize',20)
+ylabel(ax4,'$ \epsilon, \ $ rad','interpreter','latex','Fontsize',20)
+end
+legendStr = [] ;
+for i = 1:length(k_s)
+    legendStr = [legendStr; {['$ k_{\mathrm{s}} $ = ', num2str(k_s(i))]}];
+end
+legend(ax1 , legendStr ,'interpreter','latex','location','SouthEast','Fontsize',15);hold on;
+legendStr = [] ;
+for i = 1:length(k_s)
+    legendStr = [legendStr; {['$ k_{\mathrm{s}} $ = ', num2str(k_s(i))]}];
+end
+legend(ax2 , legendStr ,'interpreter','latex','location','SouthEast','Fontsize',15);hold on;
+legendStr = [] ;
+for i = 1:length(k_s)
+    legendStr = [legendStr; {['$ k_{\mathrm{s}} $ = ', num2str(k_s(i))]}];
+end
+legend(ax3 , legendStr ,'interpreter','latex','location','SouthEast','Fontsize',15);hold on;
+legendStr = [] ;
+for i = 1:length(k_s)
+    legendStr = [legendStr; {['$ k_{\mathrm{s}} $ = ', num2str(k_s(i))]}];
+end
+legend(ax4 , legendStr ,'interpreter','latex','location','SouthEast','Fontsize',15);hold on;

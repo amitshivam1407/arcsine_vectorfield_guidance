@@ -1,0 +1,89 @@
+%-------------------------------------------------------------------------%
+%---------------------     15th December 2023      -----------------------%
+%---- Sinusoidal path following using Adaptive Sliding Mode Control ------%
+%-------------------------------------------------------------------------%
+
+close all;clear all;clc;
+
+set(groot,'defaulttextinterpreter','latex');
+set(groot,'defaultAxesTickLabelInterpreter','latex');
+set(groot,'defaultLegendInterpreter','latex');
+
+global A_amp omega tau k_s Va m
+A_amp = 300;
+Va = 10;
+omega = 0.025;
+tau = 100;
+k_s = 0.045;
+m = 0.5;
+xd = 0:1:600;
+% t = linspace(0,50,length(xd));
+omega1 = omega*exp(-xd./tau);
+% A_amp = -50*exp(-t./tau);
+yd =  m*xd + A_amp.*sin(omega1.*xd);
+
+range      = 0:10:600;
+% range_y = linspace(-50,50,length(xd));
+% range_x = linspace(-50,50,length(t));
+[X,Y]      = meshgrid(range);
+% tt = linspace(0,50,length(X));
+omega11 = omega*exp(-X./tau);
+% Yp =  m*X + A_amp.*sin(omega11.*X);
+% dy_ddx_des =  m*1 -(A_amp/tau).*omega11.*cos(omega11.*X);
+Yp =  m*X + A_amp.*sin(omega11.*X);
+ff = Y - Yp ;
+e    =  -(Yp-Y);
+% phi_oval = (x.^2 + y.^2).^2 - 2*c^2*(x.^2 - y.^2) - a^4 + c^4 ;
+f = @(x,y)  y - m*x - A_amp.*sin((omega*exp(-x./tau)).*x)  ;
+nx = -m*1 +(A_amp/tau).*omega11.*cos(omega11.*X);
+ny = 1;
+% tanx =  ny ;
+% tany = -nx ;
+tanx =  nx ;
+tany = ny ;
+
+xdot = tanx - k_s*e.*nx ;
+ydot = tany - k_s.*e.*ny ;
+
+% xdot = sech(k_s*ff).*tanx - tanh(k_s*ff).*nx ;
+% ydot = sech(k_s*ff).*tany - tanh(k_s*ff).*ny ;
+
+% pp = -(k_s*ff)./sqrt(1 + (k_s*ff).^2); 
+% qq =  1./sqrt(1 + (k_s*ff).^2);
+% 
+% xdot = pp.*tanx + qq.*ny ;
+% ydot = pp.*tany + qq.*(-nx) ;
+
+xdot_norm = xdot./sqrt(xdot.^2 + ydot.^2) ;
+ydot_norm = ydot./sqrt(xdot.^2 + ydot.^2) ;
+
+% Plot format control variables
+    lw = 3;            % Line width
+    ms = 6;            % Marker size
+    ax_fnt = 17;        % Axis font size
+    lbl_fnt = ax_fnt+2; % Label font size
+    leg_fnt = ax_fnt-1; % Legend font size
+    ax_wdth = 3;        % Axis line width
+
+
+figure(1)
+quiver(X,Y,xdot_norm,ydot_norm,'color',[0.75  0.75   0.75],'linewidth',1);hold on;
+% fimplicit(f,[0  600],'--k','Linewidth',2);hold on;
+ plot(xd,yd,'g','linewidth',3);
+% plot(x(:,1),x(:,2),'m','linewidth',3);hold on;
+% plot(x_ini,y_ini,'-o','MarkerSize',10,...
+%     'MarkerEdgeColor','blue',...
+%     'MarkerFaceColor','green'); hold on;
+% plot(x_end,y_end,'-s','MarkerSize',10,...
+%     'MarkerEdgeColor','blue',...
+%     'MarkerFaceColor','cyan'); hold on;
+ax1 = gca;
+ax1.FontSize = ax_fnt;
+box on                      % Switch on the box around the axis
+ax1.XColor = 'black';         % Box horizontal lines' color
+ax1.YColor = 'black';         % Box vertical lines' color
+set(ax1,'linewidth',ax_wdth) ;
+xlabel(ax1,' $ x, $ m','Fontsize',23);
+ylabel(ax1,'$ y, $ m','Fontsize',23);
+% legend(ax1,'Vector field','Desired path','UAV trajectory','','','Fontsize',leg_fnt);
+axis(ax1, 'equal')

@@ -1,0 +1,540 @@
+%-------------------------------------------------------------------------%
+%---------------------     15th December 2023      -----------------------%
+%----- Parabolic path following using Adaptive Sliding Mode Control ------%
+%-------------------------------------------------------------------------%
+
+close all;clear all;clc;
+
+set(groot,'defaulttextinterpreter','latex');
+set(groot,'defaultAxesTickLabelInterpreter','latex');
+set(groot,'defaultLegendInterpreter','latex');
+
+%--------------- declaration of constant parameters ----------------------%
+global  h k  Va k_s W psi_w A_w A_phiw epsilon nabla zeta_0 zeta_1 zeta_2 c0 c1 c2 c3 ...
+    wxs wys tez sz uz kai_ddot mu variance
+
+h = 0;
+k = -50;
+W = 4;
+A_w = 3;
+A_phiw = pi;
+Va = 10;
+psi_w = 230*pi/180 ;
+wxs = 4;
+wys = 0;
+mu  = 0;
+variance = 0.5;
+k_s = 0.005;
+epsilon = 0.00002;
+nabla = 1;
+c1 = 5;
+
+zeta_0 = 0.01;
+zeta_1 = 0.01;
+zeta_2 = 0.01;
+
+c0 = 1;
+c2 = 2;
+c3 = 3;
+
+a_arr = [0 .0150 .06 ];
+%-------------------------------------------------------------------------%
+
+xd = -100:.005:100;
+
+
+%----------------  vector field construction  ----------------------------%
+range      = -100:5:100;
+[X,Y]      = meshgrid(range);
+kaid       = vf_parabola(X,Y,a_arr(1,1));
+Xdot       = Va*cos(kaid);
+Ydot       = Va*sin(kaid);
+
+%-------------------  initial conditions   -------------------------------%
+c_arr = [];
+c_tran = [];
+
+tspan = [0 25];
+t0=0;
+tf=tspan(end);
+dt=0.01;
+[u,v,Time] = DrydenDatagen(tf);
+
+
+for i = 1:length(a_arr)
+
+a = a_arr(i);
+yd = a*(xd - h).^2 + k;
+
+
+
+% tf = tspan(end);
+
+
+
+x_0 = -90;
+y_0 = -60;
+e10 = pi/2;
+e20 = 0;
+e10_hat = e10;
+e20_hat = e20;
+e30_hat = 0.05;
+err_10 = e10 - e10_hat;
+err_20 = e20 - e20_hat;
+x60 = 0.1;
+x70 = 0.2;
+% [kai0,kaidot0] = get_initial(xa_0,ya_0);
+% x_initial = [xa_0;ya_0;(kai0);kaidot0];
+
+x_initial = [x_0;y_0;e10;e20;e10_hat;e20_hat;err_10;err_20;x60;x70];
+
+options = odeset('RelTol',1e-8,'AbsTol',1e-8);
+[t,x] = ode45(@(t,x)fun_parabola(t,x,u,v,Time,a) ,tspan, x_initial,options);
+x_ini = x(1,1) ;
+y_ini = x(1,2) ;
+x_end = x(end,1) ;
+y_end = x(end,2) ;
+
+[kai_p,kai_o,kai_des, kaidot_des] = fun_propkaid(x(:,1),x(:,2),a);
+kai = x(:,3) + kai_des ;
+% Vg = Wx.*cos(kai) + Wy.*sin(kai) + sqrt(Va^2 - (Wx.*sin(kai) - Wy.*cos(kai))) ;
+V_g = get_Vg(t,kai,u,v,Time);
+kappa_des = kaidot_des./V_g ;
+e_path = -((x(:,2) - k) - a_arr.*(x(:,1) - h).^2);
+
+for i = 1:length(t)
+    if abs(e_path(i,1))  <= 0.1
+%         c(i) = abs(e_path(i,1)) ;
+        c_arr = [c_arr abs(e_path(i,1))];
+    else
+        c_tran =[c_tran abs(e_path(i,1))];
+%         c_arr_col(j,:) = c_arr ;
+    end
+    
+end
+
+% rmse_z = rms(c);
+tran_z(i) = mean(c_tran);
+ss_z(i) = mean(c_arr);
+
+% Plot format control variables
+    lw = 3;             % Line width
+    ms = 6;             % Marker size
+    ax_fnt = 17;        % Axis font size
+    lbl_fnt = ax_fnt+2; % Label font size
+    leg_fnt = ax_fnt-1; % Legend font size
+    ax_wdth = 3;        % Axis line width
+%% Colors
+    blue = [0 0.4470 0.7410];
+    red = [0.8500 0.3250 0.0980];
+    orange = [0.9290 0.6940 0.1250];
+    violet = [0.4940 0.1840 0.5560];
+    green = [0.4660 0.6740 0.1880];
+    cyan = [0.3010 0.7450 0.9330];
+    maroon = [0.6350 0.0780 0.1840];
+    black = [0 0 0];
+    color = [red;blue;maroon;green];
+
+
+
+figure(1)
+% quiver(X,Y,Xdot,Ydot,'color',[0.75  0.75   0.75],'linewidth',1);hold on;
+h11 = plot(xd,yd,'-','LineWidth',lw,'Color',color(i,:),'DisplayName', ['$$a = $$' , num2str(a_arr(:,i))]);hold on;grid on;
+h12 = plot(x(:,1),x(:,2),'--','LineWidth',lw,'Color',color(i,:),'DisplayName', ['$$a = $$' , num2str(a_arr(:,i))]);hold on;grid on;
+% plot(x_ini,y_ini,'-o','MarkerSize',10,...
+%     'MarkerEdgeColor','blue',...
+%     'MarkerFaceColor','green'); hold on;
+% plot(x_end,y_end,'-s','MarkerSize',10,...
+%     'MarkerEdgeColor','blue',...
+%     'MarkerFaceColor','cyan'); hold on;
+ax1 = gca;
+ax1.FontSize = ax_fnt;
+box on                      % Switch on the box around the axis
+ax1.XColor = 'black';         % Box horizontal lines' color
+ax1.YColor = 'black';         % Box vertical lines' color
+set(ax1,'linewidth',ax_wdth) ;
+xlabel(ax1,' $ x, $ m','Fontsize',23);
+ylabel(ax1,'$ y, $ m','Fontsize',23);
+legend(ax1,'Vector field','Desired path','UAV trajectory','','','Fontsize',leg_fnt);
+axis(ax1, 'equal')
+
+figure(2)
+plot(t,e_path,'-','LineWidth',lw,'Color',color(i,:),'DisplayName', ['$$a = $$' , num2str(a_arr(:,i))]);hold on;grid on;
+ax2 = gca;
+ax2.FontSize = ax_fnt;
+% Outer box setup
+box on                        % Switch on the box around the axis
+ax2.XColor = 'black';         % Box horizontal lines' color
+ax2.YColor = 'black';         % Box vertical lines' color
+set(ax2,'linewidth',ax_wdth)
+xlabel(ax2,' $$ t, $$ s','Fontsize',lbl_fnt);
+ylabel(ax2,'Tracking error $$(f(x(t) - y(t))$$, m','Fontsize',lbl_fnt);
+
+figure(3)
+plot(t,wrapToPi(kai_des)*(180/pi),'-','LineWidth',lw,'Color',color(i,:),'DisplayName', ['$$a = $$' , num2str(a_arr(:,i))]);hold on;grid on;
+plot(t,wrapToPi(kai)*(180/pi),'--','LineWidth',lw,'Color',color(i,:),'DisplayName', ['$$a = $$' , num2str(a_arr(:,i))]);hold on;grid on;
+plot(t,wrapToPi(kai_p)*(180/pi),'-.','LineWidth',lw,'Color',color(i,:),'DisplayName', ['$$a = $$' , num2str(a_arr(:,i))]);hold on;grid on;
+plot(t,wrapToPi(kai_o)*(180/pi),'-s','LineWidth',lw,'Color',color(i,:),'DisplayName', ['$$a = $$' , num2str(a_arr(:,i))]);hold on;grid on;
+ax3 = gca;
+ax3.FontSize = ax_fnt;
+box on                        % Switch on the box around the axis
+ax3.XColor = 'black';         % Box horizontal lines' color
+ax3.YColor = 'black';         % Box vertical lines' color
+set(ax3,'linewidth',3) ;
+xlabel(ax3,' $ t, $ s','Fontsize',23);
+ylabel(ax3,' $ \chi$, deg.','Fontsize',23);
+% legend(ax3,'Commanded','Achieved','Path-tangential angle','Offset angle','Fontsize',leg_fnt);
+
+% figure(4)
+% % plot(t2,kai,'linewidth',3,'DisplayName',['Case ', num2str(j)]);grid on;hold on;
+% % plot(t2,z(:,3),'linewidth',3,'DisplayName',['$$e_{\chi}$$ ', num2str(j)]);grid on;hold on;
+% % plot(t2,z(:,5),'linewidth',3,'DisplayName',['$$\hat{e}_{\chi}$$  ', num2str(j)]);grid on;hold on;
+% plot(t,x(:,3),'linewidth',3,'DisplayName','$$e_{\chi}$$ ');grid on;hold on;
+% plot(t,x(:,5),'linewidth',3,'DisplayName','$$\hat{e}_{\chi}$$ ');grid on;hold on;
+% % plot(t2,kaid,'r','linewidth',3,'DisplayName',' Commanded');grid on;hold on;
+% % plot(t2,kai,'b','linewidth',3,'DisplayName',' Achieved');grid on;hold on;
+% % plot(t2,z(:,7),'g','linewidth',3,'DisplayName','Observed');grid on;hold on;
+% ax4 = gca;
+% ax4.FontSize = ax_fnt;
+% % Outer box setup
+% box on                        % Switch on the box around the axis
+% ax4.XColor = 'black';         % Box horizontal lines' color
+% ax4.YColor = 'black';         % Box vertical lines' color
+% set(ax4,'linewidth',ax_wdth)
+% xlabel(ax4,' $$ t, $$ s','Fontsize',lbl_fnt);
+% ylabel(ax4,' $$ \hat{e}_{1}, $$ rad.','Fontsize',lbl_fnt);
+% legend(ax4,'Commanded','Achieved','Observed','Fontsize',15)
+% 
+% figure(5)
+% % plot(t2,z(:,4),'linewidth',3,'DisplayName',['$$e_{\dot{\chi}}$$ ', num2str(j)]);grid on;hold on;
+% % plot(t2,z(:,6),'linewidth',3,'DisplayName',['$$\hat{e}_{\dot{\chi}}$$ ', num2str(j)]);grid on;hold on;
+% plot(t,x(:,4),'linewidth',3,'DisplayName','$$e_{\dot{\chi}}$$ ');grid on;hold on;
+% plot(t,x(:,6),'linewidth',3,'DisplayName','$$\hat{e}_{\dot{\chi}}$$ ');grid on;hold on;
+% ax5 = gca;
+% ax5.FontSize = ax_fnt;
+% % Outer box setup
+% box on                        % Switch on the box around the axis
+% ax5.XColor = 'black';         % Box horizontal lines' color
+% ax5.YColor = 'black';         % Box vertical lines' color
+% set(ax5,'linewidth',ax_wdth)
+% xlabel(ax5,'  $$ t, $$ s','Fontsize',lbl_fnt);
+% ylabel(ax5,' $$ \hat{e}_{2}, $$ rad/s','Fontsize',lbl_fnt);
+% legend(ax5,'Commanded','Achieved','Fontsize',15)
+% 
+figure(6)
+% plot(tez,sz,'linewidth',3,'DisplayName',['Case ', num2str(j)]);grid on;hold on;
+plot(tez,sz,'linewidth',3,'-','LineWidth',lw,'Color',color(i,:),'DisplayName', ['$$a = $$' , num2str(a_arr(:,i))]);hold on;grid on;
+ax6 = gca;
+ax6.FontSize = ax_fnt;
+% Outer box setup
+box on                        % Switch on the box around the axis
+ax6.XColor = 'black';         % Box horizontal lines' color
+ax6.YColor = 'black';         % Box vertical lines' color
+set(ax6,'linewidth',ax_wdth)
+xlabel(ax6,'  $$ t, $$ s','Fontsize',lbl_fnt);
+ylabel(ax6,' $$ s = c_{1}\hat{e}_{1} + \hat{e}_{2} $$ ','Fontsize',lbl_fnt);
+
+
+end
+legend(ax1,'Fontsize',leg_fnt);
+legend(ax2,'Fontsize',leg_fnt);
+legend(ax3,'Fontsize',leg_fnt);
+legend(ax6,'Fontsize',leg_fnt);
+
+function out = fun_parabola(t,x,u,v,Time,a)
+global Va h k W psi_w A_w A_phiw c0 c2 c1 epsilon tez uz zeta_1 zeta_2 sz k_s wxs wys nabla kai_ddot
+
+if t==0
+    sz = [];
+    uz = [];
+    tez = [];
+    kai_ddot = [];
+end
+
+A = A_w*cos(0.01*t);
+psi_a = A_phiw*sin(0.01*t);
+
+Wtx = A*cos(psi_a) ;
+Wty = A*sin(psi_a) ;
+Wcx = W*cos(psi_w) ;
+Wcy = W*sin(psi_w) ;
+
+wxgb=interp1(Time,u,t);
+wygb=interp1(Time,v,t);
+% 
+% % % wg=[cos(x(3)),-sin(x(3));sin(x(3)),cos(x(3))]*[wxgb;wygb];
+% 
+wg = [wxgb;wygb];
+% wg(1) = 0;
+% wg(2) = 0;
+
+Wgx = wxs+wg(1);
+Wgy = wys+wg(2);
+
+Wx = Wcx + Wtx + Wgx ;
+Wy = Wcy + Wty + Wgy ;
+
+dydx = 2*a.*(x(1) - h);
+kai_p = atan(dydx);
+e = -((x(2) - k) - a.*(x(1) - h)^2);
+
+kai_o = pi/2 - asin(1./(1 + k_s*(e).^2)) ;
+
+if e < 0
+    kaid = (kai_p) - kai_o;
+    kai = x(3) + kaid ;
+    Vg = Wx.*cos(kai) + Wy.*sin(kai) + sqrt(Va^2 - (Wx.*sin(kai) - Wy.*cos(kai))) ;
+    out(1,1) = Vg*cos(kai);
+    out(2,1) = Vg*sin(kai);
+%     kaip_dot = -(A_amp*omega^2 *sin(omega*x(1))*out(1,1))./(1 + (tan(kai_p)).^2);
+    kaip_dot = (2*a*out(1,1))./(1 + (tan(kai_p))^2);
+    factor_1 = (2*k_s)/((1 + k_s*(e).^2).*(sqrt(2*k_s + (k_s*e).^2)));
+%     epsilon_dot = A_amp*omega*cos(omega*x(1))*out(1,1) -out(2,1);
+    epsilon_dot = -(out(2,1) - 2*a*(x(1)-h)*out(1,1));
+    kaio_dot = factor_1*epsilon_dot;
+    kaid_dot = kaip_dot - kaio_dot;
+else
+    kaid = (kai_p) + kai_o ;
+    kai = x(3) + kaid ;
+    Vg = Wx.*cos(kai) + Wy.*sin(kai) + sqrt(Va^2 - (Wx.*sin(kai) - Wy.*cos(kai))) ;
+    out(1,1) = Vg*cos(kai);
+    out(2,1) = Vg*sin(kai);
+%     kaip_dot = -(A_amp*omega^2 *sin(omega*x(1))*out(1,1))./(1 + (tan(kai_p)).^2);
+    kaip_dot = (2*a*out(1,1))./(1 + (tan(kai_p))^2);
+    factor_1 = (2*k_s)/((1 + k_s*(e).^2).*(sqrt(2*k_s + (k_s*e).^2)));
+    epsilon_dot = -(out(2,1) - 2*a*(x(1)-h)*out(1,1));
+%     epsilon_dot = A_amp*omega*cos(omega*x(1))*out(1,1) -out(2,1);
+    kaio_dot = factor_1*epsilon_dot;
+    kaid_dot = kaip_dot + kaio_dot;
+end
+
+%---  system error dynamics -----
+z_e1 = x(7)./(abs(x(7)) + epsilon);
+k1 = 5; k2 = 10;
+z1 = k1*(abs(x(7))^(1/2))*z_e1 ;
+z2 = k2*z_e1 ; 
+
+del_bar = c0*abs(x(5))  + c2*abs(x(6)) ;
+
+rho_est = x(9)*abs(x(5)) + x(10)*abs(x(6)) ;
+
+s = c1*x(5) + x(6);
+
+z_sat = s./(abs(s) + epsilon);
+
+u_z = -c1*x(6) - z2 -nabla*s - rho_est*z_sat ;
+
+kaiddot = ((Vg.^2).*(2*k_s*(3*k_s*e.^2 - 1))./(1 + k_s*e.^2).^3).*(cos(kai));
+
+out(3,1) = x(4);
+out(4,1) = u_z + del_bar - kaiddot ;
+
+%--- observer error dynamics ----
+
+
+out(5,1) = x(6) + z1;
+out(6,1) = u_z + del_bar + z2 ;
+
+%----- error between observer and system dynamics 
+
+out(7,1) = x(8) - z1 ;
+out(8,1) = -z2 - kaiddot;
+
+out(9,1) = abs(x(5))*abs(s)- zeta_1*x(9);
+out(10,1) = abs(x(6))*abs(s) -  zeta_2*x(10);
+
+kaid_ddot = u_z + del_bar - out(4,1);
+
+uz = [uz u_z];
+tez = [tez t];
+sz = [sz s];
+kai_ddot = [kai_ddot kaid_ddot];
+
+end
+
+
+function [kai0,kaidot0] = get_initial(xa_0,ya_0,a)
+global Va  k_s h k 
+
+% epsilon0 =  A_amp*sin(omega*xa_0) - ya_0;
+% dydx0 = A_amp*omega*cos(omega.*xa_0);
+% kai_p0 = atan(dydx0);
+
+epsilon0 = -((ya_0 - k) - a*(xa_0 - h)^2);
+dydx0 = 2*a*(xa_0 - h);
+kai_p0 = atan(dydx0);
+kai_o0 =  pi/2 - asin(1./(1 + k_s*(epsilon0).^2));
+
+if epsilon0 < 0
+    kai0          = (kai_p0) - kai_o0;
+    xdot0         = Va*cos(kai0);
+    ydot0         = Va*sin(kai0);
+%     kaip_dot0     = -(A_amp*omega^2*sin(omega*xa_0).*xdot0)./(1 + (tan(kai_p0))^2);
+%     factor_10     = (2*k_s)/((1 + k_s*(epsilon0).^2).*(sqrt(2*k_s + (k_s*epsilon0).^2)));
+%     epsilon_dot0  =  A_amp*omega*cos(omega*xa_0)*xdot0 - ydot0;
+    kaip_dot0 = (2*a*xdot0)./(1 + (tan(kai_p0))^2);
+    factor_10 = (2*k2)./((1 + k2*(epsilon0).^2).*(sqrt(2*k2 + (k2*epsilon0).^2)));
+    epsilon_dot0 = -(ydot0 - (2*a*(xa_0-h)*xdot0));
+    kaio_dot0     = factor_10*epsilon_dot0;
+    kaidot0       = kaip_dot0 - kaio_dot0;
+else
+    kai0          = kai_p0 + kai_o0 ;
+    xdot0         = Va*cos(kai0);
+    ydot0         = Va*sin(kai0);
+%     kaip_dot0     = -(A_amp*omega^2*sin(omega*xa_0).*xdot0)./(1 + (tan(kai_p0))^2);
+%     factor_10     = (2*k_s)/((1 + k_s*(epsilon0).^2).*(sqrt(2*k_s + (k_s*epsilon0).^2)));
+%     epsilon_dot0  = A_amp*omega*cos(omega*xa_0)*xdot0 - ydot0;
+    kaip_dot0 = (2*a*xdot0)./(1 + (tan(kai_p0))^2);
+    factor_10 = (2*k2)./((1 + k2*(epsilon0).^2).*(sqrt(2*k2 + (k2*epsilon0).^2)));
+    epsilon_dot0 = -(ydot0 - (2*a*(xa_0-h)*xdot0));
+    kaio_dot0     = factor_10*epsilon_dot0;
+    kaidot0       = kaip_dot0 + kaio_dot0;
+end
+end
+
+function [kaid] = vf_parabola(X,Y,a)
+global Va  k_s h k
+
+% dydx = X./(2*a);
+dydx = 2*a*(X-h);
+kai_p_des = atan(dydx);
+% epsilon =  Y - (X.^2)./(4*a);
+epsilon =  -((Y-k) - a*(X-h).^2) ;
+kai_o = pi/2 - asin(1./(1 + k_s*(epsilon).^2));
+for i = 1:length(X)
+    for j = 1:length(X)
+        if epsilon(i,j)< 0
+            kaid(i,j) = (kai_p_des(i,j)) - kai_o(i,j)  ;
+        else
+            kaid(i,j) = (kai_p_des(i,j)) + kai_o(i,j)  ;
+        end
+    end
+end
+end
+
+function [u,v,Time]= DrydenDatagen(tend)
+global mu variance
+% This function generates the u and v component of velocity
+% Input:
+%      tend:- Time for which the wind turbulence data is required
+%Output:-
+%       u = x component of velocity
+%       v = y component of velocity
+%       Time = time vector
+
+Gu=tf(20,[20 1]);
+Gv=tf([1 (sqrt(3)/60)],[1 (1/400) (1/10)]);
+del=0.01;
+% ntot=101;
+% tend=350;                            %  total time of simulation
+t=0:del:tend;
+ntot=(tend/del)+1;
+% w=normrnd(0,1/sqrt(del),1,ntot);
+w=normrnd(mu,variance,1,ntot);
+% t=0:del:tend;
+u=lsim(Gu,w,t);
+v=lsim(Gv,w,t);
+Time=t;
+
+end
+
+
+function [z,t] = rk45(f,z0,t0,tf,dt) %  function f, intial values x0 a vector 
+                                     %  at t0, final time tf, step size dt
+                              
+ t = t0:dt:tf;    %vector of times
+ nt = numel(t);   %no of elements in the time vector
+ 
+ nx = numel(z0);  %no of states, (no of elemets in initial vector) 
+ z = nan(nx,nt);  %matrix with nx rows and nt columns (not a number)
+
+
+ z(:,1) = z0;     %first column of the matrix is initial x0
+ for k = 1:nt-1   % At each step in the loop below, changed x(i) to x(:,i) 
+
+     k1 = dt*f(t(k),z(:,k));
+     k2 = dt*f(t(k) + dt/2, z(:,k) + k1/2);
+     k3 = dt*f(t(k) + dt/2, z(:,k) + k2/2);
+     k4 = dt*f(t(k) + dt, z(:,k) + k3);
+     
+     dx=(k1+2*k2+2*k3+k4)/6;
+     z(:,k+1)=z(:,k)+dx;
+     
+ end
+end
+
+function [kai_p,kai_o,kai_des, kaidot_des] = fun_propkaid(x1,x2,a)
+global  Va k_s h k
+
+for i = 1:length(x1)
+
+dydx(i,:) = 2*a.*(x1(i,:) - h);
+kai_p(i,:) = atan(dydx(i,:));
+epsilon(i,:) = -((x2(i,:) - k) - a.*(x1(i,:) - h).^2);
+
+% dydx(i,:) = A_amp.*omega*cos(omega*x1(i,:));
+% kai_p(i,:) = atan(dydx(i,:));
+% epsilon(i,:) = A_amp.*sin(omega*x1(i,:)) - x2(i,:);
+
+kai_o(i,:) = pi/2 - asin(1./(1 + k_s*(epsilon(i,:)).^2)) ;
+
+if epsilon(i,:) < 0
+    kai_des(i,:)     = kai_p(i,:) - kai_o(i,:);
+    xdot(i,:)        = Va*cos(kai_des(i,:));
+    ydot(i,:)        = Va*sin(kai_des(i,:));
+    kaip_dot(i,:)    = (2*a*xdot(i,:))./(1 + (tan(kai_p(i,:)))^2);
+    factor_1(i,:)    = (2*k_s)/((1 + k_s*(epsilon(i,:)).^2).*(sqrt(2*k_s + (k_s*epsilon(i,:)).^2)));
+    epsilon_dot(i,:) = -(ydot(i,:) - 2*a*(x1(i,:) - h)*xdot(i,:));
+%     kaip_dot(i,:)    = -(A_amp*omega^2*sin(omega*x1(i,:)).*xdot(i,:))./(1 + (tan(kai_p(i,:)))^2);
+%     factor_1(i,:)    = (2*k_s)./((1 + k_s*(epsilon(i,:)).^2).*(sqrt(2*k_s + (k_s*epsilon(i,:)).^2)));
+%     epsilon_dot(i,:) = A_amp*omega*cos(omega*x1(i,:))*xdot(i,:) - ydot(i,:);
+    kaio_dot(i,:)    = factor_1(i,:)*epsilon_dot(i,:);
+    kaidot_des(i,:)  = kaip_dot(i,:) - kaio_dot(i,:);
+else
+    kai_des(i,:)     = kai_p(i,:) + kai_o(i,:);
+    xdot(i,:)        = Va*cos(kai_des(i,:));
+    ydot(i,:)        = Va*sin(kai_des(i,:));
+    kaip_dot(i,:)    = (2*a*xdot(i,:))./(1 + (tan(kai_p(i,:)))^2);
+    factor_1(i,:)    = (2*k_s)/((1 + k_s*(epsilon(i,:)).^2).*(sqrt(2*k_s + (k_s*epsilon(i,:)).^2)));
+    epsilon_dot(i,:) = -(ydot(i,:) - 2*a*(x1(i,:) - h)*xdot(i,:));
+%     kaip_dot(i,:)    = -(A_amp*omega^2*sin(omega*x1(i,:)).*xdot(i,:))./(1 + (tan(kai_p(i,:)))^2);
+%     factor_1(i,:)    = (2*k_s)/((1 + k_s*(epsilon(i,:)).^2).*(sqrt(2*k_s + (k_s*epsilon(i,:)).^2)));
+%     epsilon_dot(i,:) =  A_amp*omega*cos(omega*x1(i,:))*xdot(i,:) - ydot(i,:);
+    kaio_dot(i,:)    = factor_1(i,:)*epsilon_dot(i,:);
+    kaidot_des(i,:)  = kaip_dot(i,:) + kaio_dot(i,:);
+end
+end
+
+end
+
+function V_groundspeed = get_Vg(t,kai,u,v,Time)
+global  Va k_s W psi_w A_w A_phiw wxs wys
+
+
+A = A_w*cos(0.01*t);
+psi_a = A_phiw*sin(0.01*t);
+
+Wtx = A.*cos(psi_a) ;
+Wty = A.*sin(psi_a) ;
+Wcx = W*cos(psi_w) ;
+Wcy = W*sin(psi_w) ;
+
+wxgb=interp1(Time,u,t);
+wygb=interp1(Time,v,t);
+% 
+% % % wg=[cos(x(3)),-sin(x(3));sin(x(3)),cos(x(3))]*[wxgb;wygb];
+% 
+wg = [wxgb;wygb];
+% wg(1) = 0;
+% wg(2) = 0;
+
+Wgx = wxs+wg(1);
+Wgy = wys+wg(2);
+
+Wx = Wcx + Wtx + Wgx ;
+Wy = Wcy + Wty + Wgy ;
+
+
+V_groundspeed = Wx.*cos(kai) + Wy.*sin(kai) + sqrt(Va^2 - (Wx.*sin(kai) - Wy.*cos(kai))) ;
+
+end

@@ -1,0 +1,472 @@
+%% main_lame_hocbf_comparison.m
+% Lamé-HOCBF vs Ellipse-HOCBF for a unicycle model
+% Exact same:
+% - vehicle model
+% - nominal controller
+% - speed
+% - steering bound
+% - HOCBF gains
+% Only barrier geometry changes: n = 2 (ellipse) vs n = 4 (Lamé)
+
+clear; clc; close all;
+
+set(groot,'defaultTextInterpreter','latex');
+set(groot,'defaultAxesTickLabelInterpreter','latex');
+set(groot,'defaultLegendInterpreter','latex');
+
+%% Parameters
+P.a      = 10;
+P.b      = 6;
+P.xc     = 0;
+P.yc     = 0;
+
+P.v      = 1.0;       % constant forward speed
+P.umax   = 0.25;      % same for ellipse and Lame
+
+P.k1     = 1.0;       % HOCBF gain
+P.k2     = 1.0;       % HOCBF gain
+
+P.dt     = 0.02;
+P.T      = 25;
+P.N      = round(P.T/P.dt) + 1;
+P.t      = linspace(0,P.T,P.N);
+
+% Initial condition: [x; y; psi]
+x0 = [-8; 5.2; 0];
+
+% Barrier exponents
+n_ellipse = 2;
+n_lame    = 3;
+
+%% Simulate both cases
+outE = simulate_case(x0, n_ellipse, P);
+outL = simulate_case(x0, n_lame,    P);
+
+%% Plot 1: Geometry + premature activation region + trajectories
+plot_geometry_and_trajectories(outE, outL, P, n_ellipse, n_lame);
+
+%% Plot 2: Control intervention comparison
+plot_intervention(outE, outL, P);
+
+%% Plot 3: Barrier values and HOCBF residuals
+plot_barrier_diagnostics(outE, outL, P);
+
+%% Plot 4: Feasibility / intervention map
+% Fix heading and vary initial position
+psi0_map = 0;
+xgrid = linspace(-9.5, 9.5, 55);
+ygrid = linspace(-5.8, 5.8, 45);
+
+mapE = feasibility_map(xgrid, ygrid, psi0_map, n_ellipse, P);
+mapL = feasibility_map(xgrid, ygrid, psi0_map, n_lame,    P);
+
+plot_feasibility_maps(mapE, mapL, xgrid, ygrid, P);
+
+%% Print summary metrics
+disp('================ SUMMARY METRICS ================');
+fprintf('Ellipse-HOCBF:\n');
+print_metrics(outE);
+
+fprintf('\nLamé-HOCBF:\n');
+print_metrics(outL);
+
+function plot_geometry_and_trajectories(outE, outL, P, nE, nL)
+
+figure('Color','w');
+hold on; grid on; axis equal;
+
+% Boundaries
+xx = linspace(-P.a, P.a, 600);
+
+yyE = P.b * (1 - abs(xx/P.a).^nE).^(1/nE);
+yyL = P.b * (1 - abs(xx/P.a).^nL).^(1/nL);
+
+% Clean up NaNs
+yyE(abs(xx) > P.a) = NaN;
+yyL(abs(xx) > P.a) = NaN;
+
+plot(xx,  yyE, 'LineWidth', 2.5, 'DisplayName', sprintf('Ellipse boundary ($n=%d$)',nE));
+plot(xx, -yyE, 'LineWidth', 2.5, 'HandleVisibility','off');
+
+plot(xx,  yyL, '--', 'LineWidth', 2.5, 'DisplayName', sprintf('Lame boundary ($n=%d$)',nL));
+plot(xx, -yyL, '--', 'LineWidth', 2.5, 'HandleVisibility','off');
+
+% Shade premature activation region in upper half
+xq = linspace(-P.a, P.a, 600);
+yE = P.b * (1 - abs(xq/P.a).^nE).^(1/nE);
+yL = P.b * (1 - abs(xq/P.a).^nL).^(1/nL);
+
+valid = ~isnan(yE) & ~isnan(yL) & (yL >= yE);
+xf = [xq, fliplr(xq)];
+yf = [yE, fliplr(yL)];
+patch(xf, yf, [0.85 0.85 0.85], ...
+    'FaceAlpha', 0.35, 'EdgeColor','none', ...
+    'DisplayName','Premature activation region');
+
+% Trajectories
+plot(outE.x(1,:), outE.x(2,:), 'LineWidth', 2.5, ...
+    'DisplayName', 'Ellipse-HOCBF trajectory');
+plot(outL.x(1,:), outL.x(2,:), '--', 'LineWidth', 2.5, ...
+    'DisplayName', 'Lam\''e-HOCBF trajectory');
+
+% Initial condition marker
+plot(outE.x(1,1), outE.x(2,1), 'ko', 'MarkerFaceColor','k', ...
+    'DisplayName','Initial condition');
+
+xlabel('$x$');
+ylabel('$y$');
+title('Geometry, Premature Activation Region, and Closed-Loop Trajectories');
+legend('Location','best');
+box on;
+end
+
+function plot_intervention(outE, outL, P)
+
+figure('Color','w');
+
+subplot(2,1,1);
+plot(P.t, outE.u_safe - outE.u_nom, 'LineWidth', 2.5, ...
+    'DisplayName','Ellipse-HOCBF');
+hold on; grid on;
+plot(P.t, outL.u_safe - outL.u_nom, '--', 'LineWidth', 2.5, ...
+    'DisplayName','Lam\''e-HOCBF');
+ylabel('$u^\star - u_{\mathrm{nom}}$');
+title('Control Intervention');
+legend('Location','best');
+box on;
+
+subplot(2,1,2);
+plot(P.t, outE.u_safe, 'LineWidth', 2.2, 'DisplayName','$u^\star$ ellipse');
+hold on; grid on;
+plot(P.t, outL.u_safe, '--', 'LineWidth', 2.2, 'DisplayName','$u^\star$ Lam\''e');
+plot(P.t, outE.u_nom, ':', 'LineWidth', 2.0, 'DisplayName','$u_{\mathrm{nom}}$');
+yline(P.umax,  'k-.', 'LineWidth', 1.5, 'DisplayName','$u_{\max}$');
+yline(-P.umax, 'k-.', 'LineWidth', 1.5, 'HandleVisibility','off');
+xlabel('$t$ [s]');
+ylabel('$u$');
+legend('Location','best');
+box on;
+end
+
+function plot_barrier_diagnostics(outE, outL, P)
+
+figure('Color','w');
+
+subplot(2,1,1);
+plot(P.t, outE.h, 'LineWidth', 2.5, 'DisplayName','Ellipse-HOCBF');
+hold on; grid on;
+plot(P.t, outL.h, '--', 'LineWidth', 2.5, 'DisplayName','Lam\''e-HOCBF');
+yline(0, 'k-.', 'LineWidth', 1.5, 'DisplayName','$h=0$');
+ylabel('$h(x,y)$');
+title('Barrier Value');
+legend('Location','best');
+box on;
+
+subplot(2,1,2);
+plot(P.t, outE.hocbf_res, 'LineWidth', 2.5, 'DisplayName','Ellipse-HOCBF');
+hold on; grid on;
+plot(P.t, outL.hocbf_res, '--', 'LineWidth', 2.5, 'DisplayName','Lam\''e-HOCBF');
+yline(0, 'k-.', 'LineWidth', 1.5, 'DisplayName','Residual $=0$');
+xlabel('$t$ [s]');
+ylabel('HOCBF residual');
+title('HOCBF Constraint Residual');
+legend('Location','best');
+box on;
+end
+
+function map = feasibility_map(xgrid, ygrid, psi0, n, P)
+
+Nx = numel(xgrid);
+Ny = numel(ygrid);
+
+% codes:
+% 0 = outside initial safe set
+% 1 = feasible + low intervention
+% 2 = feasible + high intervention
+% 3 = infeasible at some point
+
+map.code = zeros(Ny, Nx);
+map.Jint = nan(Ny, Nx);
+
+threshold_int = 0.15;   % tune as needed
+
+for iy = 1:Ny
+    for ix = 1:Nx
+        x0 = [xgrid(ix); ygrid(iy); psi0];
+
+        bt0 = barrier_terms(x0, n, P);
+        if bt0.h < 0
+            map.code(iy,ix) = 0;
+            continue;
+        end
+
+        out = simulate_case(x0, n, P);
+        map.Jint(iy,ix) = out.J_int;
+
+        if ~out.all_feasible
+            map.code(iy,ix) = 3;
+        else
+            if out.J_int <= threshold_int
+                map.code(iy,ix) = 1;
+            else
+                map.code(iy,ix) = 2;
+            end
+        end
+    end
+end
+end
+
+function plot_feasibility_maps(mapE, mapL, xgrid, ygrid, P)
+
+figure('Color','w');
+
+subplot(1,2,1);
+imagesc(xgrid, ygrid, mapE.code);
+set(gca,'YDir','normal');
+axis equal tight;
+grid on;
+title('Ellipse-HOCBF map');
+xlabel('$x_0$');
+ylabel('$y_0$');
+colorbar;
+
+subplot(1,2,2);
+imagesc(xgrid, ygrid, mapL.code);
+set(gca,'YDir','normal');
+axis equal tight;
+grid on;
+title('Lam\''e-HOCBF map');
+xlabel('$x_0$');
+ylabel('$y_0$');
+colorbar;
+end
+
+function print_metrics(out)
+
+fprintf('  n                = %d\n', out.n);
+fprintf('  J_int            = %.6f\n', out.J_int);
+fprintf('  J_peak           = %.6f\n', out.J_peak);
+fprintf('  J_act            = %.6f\n', out.J_act);
+fprintf('  J_safe           = %.6f\n', out.J_safe);
+fprintf('  all feasible     = %d\n', out.all_feasible);
+end
+
+
+function out = simulate_case(x0, n, P)
+
+x = zeros(3,P.N);
+u_nom_hist   = zeros(1,P.N);
+u_safe_hist  = zeros(1,P.N);
+h_hist       = zeros(1,P.N);
+hdot_hist    = zeros(1,P.N);
+hddot_hist   = zeros(1,P.N);
+hocbf_res    = zeros(1,P.N);
+qp_feas      = true(1,P.N);
+
+x(:,1) = x0;
+
+for k = 1:P.N
+    tk = P.t(k);
+    xk = x(:,k);
+
+    % Nominal steering input
+    u_nom = nominal_control(tk, xk, P);
+
+    % Safe input via HOCBF-QP
+    [u_safe, info] = hocbf_qp_controller(xk, u_nom, n, P);
+
+    % Log
+    u_nom_hist(k)  = u_nom;
+    u_safe_hist(k) = u_safe;
+    h_hist(k)      = info.h;
+    hdot_hist(k)   = info.hdot;
+    hddot_hist(k)  = info.hddot;
+    hocbf_res(k)   = info.residual;
+    qp_feas(k)     = info.feasible;
+
+    % Integrate one step except last sample
+    if k < P.N
+        x(:,k+1) = rk4_step(xk, u_safe, P.dt, P);
+    end
+end
+
+% Metrics
+eps_act = 1e-3;
+J_int  = trapz(P.t, (u_safe_hist - u_nom_hist).^2);
+J_peak = max(abs(u_safe_hist - u_nom_hist));
+J_act  = trapz(P.t, abs(u_safe_hist - u_nom_hist) > eps_act);
+J_safe = min(h_hist);
+all_feasible = all(qp_feas);
+
+out.x          = x;
+out.u_nom      = u_nom_hist;
+out.u_safe     = u_safe_hist;
+out.h          = h_hist;
+out.hdot       = hdot_hist;
+out.hddot      = hddot_hist;
+out.hocbf_res  = hocbf_res;
+out.qp_feas    = qp_feas;
+
+out.n          = n;
+out.J_int      = J_int;
+out.J_peak     = J_peak;
+out.J_act      = J_act;
+out.J_safe     = J_safe;
+out.all_feasible = all_feasible;
+end
+
+function u_nom = nominal_control(t, x, P)
+% Simple nominal input:
+% 0 <= t < 8   : move straight near upper side
+% 8 <= t < 16  : turn toward corner
+% 16 <= t      : straighten again
+
+if t < 8
+    u_nom = 0.0;
+elseif t < 16
+    u_nom = 0.18;
+else
+    u_nom = 0.0;
+end
+
+% hard clip for safety
+u_nom = max(min(u_nom, P.umax), -P.umax);
+end
+
+function dx = unicycle_dynamics(x, u, P)
+psi = x(3);
+
+dx = zeros(3,1);
+dx(1) = P.v*cos(psi);
+dx(2) = P.v*sin(psi);
+dx(3) = u;
+end
+
+function xnext = rk4_step(x, u, dt, P)
+
+k1 = unicycle_dynamics(x,             u, P);
+k2 = unicycle_dynamics(x + 0.5*dt*k1, u, P);
+k3 = unicycle_dynamics(x + 0.5*dt*k2, u, P);
+k4 = unicycle_dynamics(x + dt*k3,     u, P);
+
+xnext = x + (dt/6)*(k1 + 2*k2 + 2*k3 + k4);
+end
+
+function info = barrier_terms(x, n, P)
+% Returns h, hdot, hddot=A+Bu, and coefficients A,B for HOCBF
+
+px  = x(1);
+py  = x(2);
+psi = x(3);
+
+xi_x = (px - P.xc)/P.a;
+xi_y = (py - P.yc)/P.b;
+
+% Barrier
+h = 1 - abs(xi_x)^n - abs(xi_y)^n;
+
+% First derivatives
+hx = -(n/P.a) * abs(xi_x)^(n-1) * sgn0(xi_x);
+hy = -(n/P.b) * abs(xi_y)^(n-1) * sgn0(xi_y);
+
+% hdot
+hdot = P.v*(hx*cos(psi) + hy*sin(psi));
+
+% Second derivative coefficients:
+% hddot = A + B*u
+%
+% Derived expressions:
+% dot(hx) = -(n(n-1)v/a^2)|xi_x|^(n-2) cos(psi)
+% dot(hy) = -(n(n-1)v/b^2)|xi_y|^(n-2) sin(psi)
+
+A = -n*(n-1)*P.v^2 * ( ...
+      (abs(xi_x)^(n-2)/P.a^2)*cos(psi)^2 + ...
+      (abs(xi_y)^(n-2)/P.b^2)*sin(psi)^2 );
+
+B = P.v*n*( ...
+      (abs(xi_x)^(n-1)*sgn0(xi_x)/P.a)*sin(psi) - ...
+      (abs(xi_y)^(n-1)*sgn0(xi_y)/P.b)*cos(psi) );
+
+info.h    = h;
+info.hx   = hx;
+info.hy   = hy;
+info.hdot = hdot;
+info.A    = A;
+info.B    = B;
+end
+
+function s = sgn0(z)
+if z > 0
+    s = 1;
+elseif z < 0
+    s = -1;
+else
+    s = 0;
+end
+end
+
+function [u_safe, out] = hocbf_qp_controller(x, u_nom, n, P)
+
+bt = barrier_terms(x, n, P);
+
+h    = bt.h;
+hdot = bt.hdot;
+A    = bt.A;
+B    = bt.B;
+
+% Linear HOCBF condition:
+% A + B*u + (k1+k2)*hdot + k1*k2*h >= 0
+c0 = A + (P.k1 + P.k2)*hdot + P.k1*P.k2*h;
+
+% Constraint is: B*u >= -c0
+umin = -P.umax;
+umax =  P.umax;
+
+tolB = 1e-10;
+
+if abs(B) < tolB
+    % Degenerate case: control has almost no instantaneous influence
+    % Check whether inequality is already satisfied
+    if c0 >= 0
+        u_safe = min(max(u_nom, umin), umax);
+        feasible = true;
+    else
+        % infeasible at this state under current HOCBF structure
+        u_safe = min(max(u_nom, umin), umax);
+        feasible = false;
+    end
+else
+    if B > 0
+        lb_hocbf = -c0 / B;
+        lb = max(umin, lb_hocbf);
+        ub = umax;
+    else
+        ub_hocbf = -c0 / B;
+        lb = umin;
+        ub = min(umax, ub_hocbf);
+    end
+
+    feasible = (lb <= ub);
+
+    if feasible
+        % Projection of u_nom onto feasible interval
+        u_safe = min(max(u_nom, lb), ub);
+    else
+        % Fallback: saturate nominal input
+        u_safe = min(max(u_nom, umin), umax);
+    end
+end
+
+% Exact hddot under chosen u
+hddot = A + B*u_safe;
+
+% residual: should be >= 0 if feasible and enforced
+residual = hddot + (P.k1 + P.k2)*hdot + P.k1*P.k2*h;
+
+out.h        = h;
+out.hdot     = hdot;
+out.hddot    = hddot;
+out.residual = residual;
+out.feasible = feasible;
+end
+
