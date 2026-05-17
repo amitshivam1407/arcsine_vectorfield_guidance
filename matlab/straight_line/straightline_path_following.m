@@ -362,7 +362,7 @@ plot(ax_gif,x_ini,y_ini,'-o','LineWidth',2,...
 
 xlabel(ax_gif,' $ x, $  m','Fontsize',lbl_fnt);
 ylabel(ax_gif,' $ y, $  m','Fontsize',lbl_fnt);
-title(ax_gif,'Arcsine Vector Field Guidance','Fontsize',lbl_fnt);
+% title(ax_gif,'Arcsine Vector Field Guidance','Fontsize',lbl_fnt);
 
 ax_gif.FontSize = ax_fnt;
 ax_gif.XColor = 'black';

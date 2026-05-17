@@ -28,7 +28,7 @@ y_sc = y_c + rd*sin(theta);     % y-coordinate of the desired circular path
 
 %------------------ initial conditions   ---------------------------------%
 
-tspan = [0 25];                         % simulation run time
+tspan = [0 30];                         % simulation run time
 
 r_0 = 100;                              % initial radial distance in m
 gamma_0 = deg2rad(225);                 % initial LOS angle in rad
@@ -336,6 +336,85 @@ trajectory_data.vector_field.kappa = kappa_des;
 filename = sprintf('circular_orbit_trajectory.mat');
 save(filename, 'trajectory_data');
 fprintf('Trajectory data saved to: %s\n', filename);
+
+%% Create GIF animation: UAV moving on vector field
+
+gif_name = 'circular_path_following.gif';
+
+figure(10); clf;
+set(gcf,'Color','w','Position',[100 100 900 650]);
+ax_gif = gca;
+hold(ax_gif,'on');
+grid(ax_gif,'on');
+box(ax_gif,'on');
+
+% Plot fixed background once
+plot(ax_gif,x_sc,y_sc,'k','linewidth',lw); hold(ax_gif,'on');
+quiver(ax_gif,X,Y,xdot,ydot,0.7,'color',[0.2 0.6 0.8],'linewidth',1.5); hold(ax_gif,'on');
+plot(ax_gif,x_c,y_c,'-o','LineWidth',2,'MarkerSize',10,...
+    'MarkerEdgeColor','black',...
+    'MarkerFaceColor','magenta'); hold(ax_gif,'on');
+plot(ax_gif,x_ini,y_ini,'-o','LineWidth',2,...
+    'MarkerEdgeColor','k',...
+    'MarkerFaceColor',green,...
+    'MarkerSize',10); hold(ax_gif,'on');
+
+xlabel(ax_gif,' $ x, $  m','Fontsize',lbl_fnt);
+ylabel(ax_gif,' $ y, $  m','Fontsize',lbl_fnt);
+% title(ax_gif,'Circular Orbit Following','Fontsize',lbl_fnt);
+
+ax_gif.FontSize = ax_fnt;
+ax_gif.XColor = 'black';
+ax_gif.YColor = 'black';
+set(ax_gif,'linewidth',ax_lw)
+axis(ax_gif,'equal');
+xlim(ax_gif,[-100 100]);
+ylim(ax_gif,[-100 100]);
+
+% animated objects
+traj_line = plot(ax_gif,nan,nan,'color',maroon,'linewidth',lw);
+
+% Create fixed-wing UAV shape (triangle pointing in direction of motion)
+uav_size = 5;
+uav_shape_x = uav_size*[-1, 2, -1, -1];
+uav_shape_y = uav_size*[-1, 0, 1, -1];
+h_uav_gif = fill(ax_gif,nan, nan, green, 'EdgeColor', black, 'LineWidth', 2);
+
+legend(ax_gif,'Desired orbit','Vector field','','UAV trajectory','', ...
+    'Fontsize',leg_fnt,'Location','northwest');
+
+% choose fewer frames for smaller GIF
+skip = 8;
+
+for k = 1:skip:length(t)
+    
+    set(traj_line,'XData',x(1:k,3),'YData',x(1:k,4));
+    
+    % Get current heading
+    chi_curr = x(k,5);
+    
+    % Rotate and translate UAV shape
+    R = [cos(chi_curr), -sin(chi_curr); sin(chi_curr), cos(chi_curr)];
+    uav_rotated = R * [uav_shape_x; uav_shape_y];
+    uav_x = uav_rotated(1,:) + x(k,3);
+    uav_y = uav_rotated(2,:) + x(k,4);
+    
+    set(h_uav_gif, 'XData', uav_x, 'YData', uav_y);
+    
+    drawnow;
+    
+    frame = getframe(gcf);
+    im = frame2im(frame);
+    [A,map] = rgb2ind(im,256);
+    
+    if k == 1
+        imwrite(A,map,gif_name,'gif','LoopCount',Inf,'DelayTime',0.1);
+    else
+        imwrite(A,map,gif_name,'gif','WriteMode','append','DelayTime',0.1);
+    end
+end
+
+fprintf('GIF animation saved to: %s\n', gif_name);
 
 function out = fun_circ_autopilot_nowind(t,x)
 global  k_kai k_kaidot rd k2 Vgd
