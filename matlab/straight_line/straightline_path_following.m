@@ -264,11 +264,18 @@ h_uav = fill(nan, nan, green, 'EdgeColor', black, 'LineWidth', 2);
 legend('Desired line','Vector field','','Trajectory','','Fontsize',leg_fnt);
 
 % Setup video writer
+% Fix figure size in pixels so video frames are consistent across monitors
+set(gcf, 'Units', 'pixels', 'Position', [100 100 1074 648]);  % fixed size
+drawnow;  % force resize before first getframe
 video_filename = sprintf('straightline_animation_%s.mp4', datestr(now,''));
 vidObj = VideoWriter(video_filename, 'MPEG-4');
 vidObj.FrameRate = 10; % 10 fps for smooth animation
 vidObj.Quality = 95; % High quality
 open(vidObj);
+% Capture first frame to lock the expected frame size
+initFrame = getframe(gcf);
+expectedSize = size(initFrame.cdata);
+writeVideo(vidObj, initFrame);
 
 % Animation loop
 dt_anim = 0.1; % Animation time step
@@ -294,8 +301,12 @@ for i = 1:length(t_anim)
     title(ax7, sprintf('Time: %.2f s', t_anim(i)), 'Fontsize', lbl_fnt);
     drawnow;
     
-    % Capture frame for video
+    % Capture frame for video and resize to match expected size
+    % (prevents frame-size mismatch across different monitors/scaling)
     frame = getframe(gcf);
+    if ~isequal(size(frame.cdata), expectedSize)
+        frame.cdata = imresize(frame.cdata, [expectedSize(1) expectedSize(2)]);
+    end
     writeVideo(vidObj, frame);
 end
 
@@ -329,6 +340,82 @@ trajectory_data.vector_field.ydot = ydot;
 filename = sprintf('straightline_trajectory_%s.mat', datestr(now,'yyyymmdd_HHMMSS'));
 save(filename, 'trajectory_data');
 fprintf('Trajectory data saved to: %s\n', filename);
+
+%% Create GIF animation: UAV moving on vector field
+
+gif_name = 'straight_line_path_following.gif';
+
+figure(10); clf;
+set(gcf,'Color','w','Position',[100 100 900 650]);
+ax_gif = gca;
+hold(ax_gif,'on');
+grid(ax_gif,'on');
+box(ax_gif,'on');
+
+% Plot fixed background once
+xline(ax_gif,0,'-k','linewidth',3); hold(ax_gif,'on');
+quiver(ax_gif,X,Y,xdot,ydot,0.7,'color',[0.2 0.6 0.8],'linewidth',1.5); hold(ax_gif,'on');
+plot(ax_gif,x_ini,y_ini,'-o','LineWidth',2,...
+    'MarkerEdgeColor','k',...
+    'MarkerFaceColor',green,...
+    'MarkerSize',10); hold(ax_gif,'on');
+
+xlabel(ax_gif,' $ x, $  m','Fontsize',lbl_fnt);
+ylabel(ax_gif,' $ y, $  m','Fontsize',lbl_fnt);
+title(ax_gif,'Arcsine Vector Field Guidance','Fontsize',lbl_fnt);
+
+ax_gif.FontSize = ax_fnt;
+ax_gif.XColor = 'black';
+ax_gif.YColor = 'black';
+set(ax_gif,'linewidth',ax_lw)
+axis(ax_gif,'equal');
+xlim(ax_gif,[-120 120]);
+ylim(ax_gif,[-120 120]);
+
+% animated objects
+traj_line = plot(ax_gif,nan,nan,'color',maroon,'linewidth',lw);
+
+% Create fixed-wing UAV shape (triangle pointing in direction of motion)
+uav_size = 5;
+uav_shape_x = uav_size*[-1, 2, -1, -1];
+uav_shape_y = uav_size*[-1, 0, 1, -1];
+h_uav_gif = fill(ax_gif,nan, nan, green, 'EdgeColor', black, 'LineWidth', 2);
+
+legend(ax_gif,'Desired line','Vector field','','UAV trajectory','', ...
+    'Fontsize',leg_fnt,'Location','northwest');
+
+% choose fewer frames for smaller GIF
+skip = 8;
+
+for k = 1:skip:length(t)
+    
+    set(traj_line,'XData',x(1:k,1),'YData',x(1:k,2));
+    
+    % Get current heading
+    chi_curr = x(k,3);
+    
+    % Rotate and translate UAV shape
+    R = [cos(chi_curr), -sin(chi_curr); sin(chi_curr), cos(chi_curr)];
+    uav_rotated = R * [uav_shape_x; uav_shape_y];
+    uav_x = uav_rotated(1,:) + x(k,1);
+    uav_y = uav_rotated(2,:) + x(k,2);
+    
+    set(h_uav_gif, 'XData', uav_x, 'YData', uav_y);
+    
+    drawnow;
+    
+    frame = getframe(gcf);
+    im = frame2im(frame);
+    [A,map] = rgb2ind(im,256);
+    
+    if k == 1
+        imwrite(A,map,gif_name,'gif','LoopCount',Inf,'DelayTime',0.1);
+    else
+        imwrite(A,map,gif_name,'gif','WriteMode','append','DelayTime',0.1);
+    end
+end
+
+fprintf('GIF animation saved to: %s\n', gif_name);
 
 %%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%%
 
