@@ -1,0 +1,575 @@
+%-------------------------------------------------------------------------%
+%---------------------     31st March 2024      --------------------------%
+%-----------  Sinusoidal path following without wind   -------------------%
+%-------------------------------------------------------------------------%
+
+close all;clear all;clc;
+set(groot,'defaulttextinterpreter','latex');
+set(groot,'defaultLegendInterpreter','latex');
+
+%--------------- declaration of constant parameters ----------------------%
+global  Vgd  k_kai k_kaidot k2 omega A
+omega = 0.06;            % frequency parameter 
+A = 5;                   % amplitude 
+Vgd = 10;                % ground speed
+k_kai = 50;              % autopilot proportional gain
+k_kaidot = sqrt(k_kai);  % autopilot derivative gain  
+k2 = .005;               % guidance gain
+
+%-------------------------------------------------------------------------%
+
+%-------------------  initial conditions   -------------------------------%
+
+tspan = [0 30];                                     % simulation run time
+
+xa_0 = -90;                                         % initial UAV position x-coordinate
+ya_0 = -80;                                         % initial UAV position y-coordinate
+epsilon0 =  A*sin(omega*xa_0) - ya_0;               % initial tracking error
+dydx0 = A*omega*cos(omega.*xa_0);                   % slope on the path at initial abscissa
+kai_p0 = atan(dydx0);                               % initial path tangential term at initial abscissa
+kai_o0 =  pi/2 - asin(1./(1 + k2*(epsilon0).^2));   % initial offset term at initial abscissa
+
+
+%-- computation of initial heading angle kai0 in rad and heading rate kaidot0 in rad/s----------
+if epsilon0 < 0     
+    kai0          = (kai_p0) - kai_o0;
+    xdot0         = Vgd*cos(kai0);
+    ydot0         = Vgd*sin(kai0);
+    kaip_dot0     = -(A*omega^2*sin(omega*xa_0).*xdot0)./(1 + (tan(kai_p0))^2);
+    factor_10     = (2*k2)/((1 + k2*(epsilon0).^2).*(sqrt(2*k2 + (k2*epsilon0).^2)));
+    epsilon_dot0  =  A*omega*cos(omega*xa_0)*xdot0 - ydot0;
+    kaio_dot0     = factor_10*epsilon_dot0;
+    kaidot0       = kaip_dot0 - kaio_dot0;
+else
+    kai0          = kai_p0 + kai_o0 ;
+    xdot0         = Vgd*cos(kai0);
+    ydot0         = Vgd*sin(kai0);
+    kaip_dot0     = -(A*omega^2*sin(omega*xa_0).*xdot0)./(1 + (tan(kai_p0))^2);
+    factor_10     = (2*k2)/((1 + k2*(epsilon0).^2).*(sqrt(2*k2 + (k2*epsilon0).^2)));
+    epsilon_dot0  = A*omega*cos(omega*xa_0)*xdot0 - ydot0;
+    kaio_dot0     = factor_10*epsilon_dot0;
+    kaidot0       = kaip_dot0 + kaio_dot0;
+end
+% [kai0, kaidot0] = fun_propkaid(xa_0,ya_0);
+kai0_deg = rad2deg(wrapToPi(kai0));            % initial heading angle in deg
+
+
+
+x_initial = [xa_0;ya_0;(kai0);kaidot0];        %  initial value array
+
+%------------ desired path -----------------------------------------------%
+xd = -130:.005:130; 
+yd = A*sin(omega.*xd);
+
+%-------------------- vector field construction  -------------------------%
+range      = -130:5:130;
+[X,Y]      = meshgrid(range);
+dy_ddx_des = A*omega*cos(omega.*X);
+kai_p_des  = atan(dy_ddx_des);
+epsilon    =  A*sin(omega.*X)-Y;
+[kaid]     = vf_sinusoidal(X,Y);
+Xdot       = Vgd*cos(kaid);
+Ydot       = Vgd*sin(kaid);
+
+
+%--------------- ode solver without stopping condition -------------------%
+% 
+options = odeset('RelTol',1e-8,'AbsTol',1e-8);
+[t,x] = ode45(@(t,x)fun_sinusoidal(t,x) ,tspan, x_initial,options);
+% [t1,y] = ode45(@(t,y)fun_sinusoidal(t,y) ,tspan, x_initial,options);
+%----------------  ode solver with stopping condition  -------------------%
+
+% option_x = odeset('RelTol',1e-11,'AbsTol',1e-11,'Events',@(t,x) stopping_sinusoidal(t,x));
+% 
+% [t,x, te, ze, ie] = ode45(@(t,x) fun_sinusoidal(t,x), tspan, x_initial, option_x);
+
+%%%%%%%%%%%%%%%%%%%%%%%  parameters to plot   %%%%%%%%%%%%%%%%%%%%%%%%%%%%%
+
+x_ini = x(1,1) ;
+y_ini = x(1,2) ;
+x_end = x(end,1) ;
+y_end = x(end,2) ;
+path_error =   A*sin(omega.*x(:,1)) - x(:,2);
+[kai_p,kai_o,kai_des, kaidot_des] = fun_propkaid(x(:,1),x(:,2));
+kappa_des = kaidot_des./Vgd ;
+% psi = x(:,3) + asin((wx*sin(x(:,3)) - wy*cos(x(:,3)))./ x(:,5) );
+% Vad = sqrt(Vgd^2  + wx^2 + wy^2 - 2.*(Vgd*wx.*cos(kai_des) + Vgd*wy.*sin(kai_des)));
+% Vg = sqrt((x(:,5).*cos(psi) + wx).^2 + (x(:,5).*sin(psi) + wy).^2) ;
+kaidot_actual = x(:,4);
+kappa_actual = kaidot_actual./Vgd;
+%---------------------- plotting figures ---------------------------------%
+
+    %% Colors for plotting
+    blue = [0 0.4470 0.7410];
+    red = [0.8500 0.3250 0.0980];
+    orange = [0.9290 0.6940 0.1250];
+    violet = [0.4940 0.1840 0.5560];
+    green = [0 1 0];
+    cyan = [0.3010 0.7450 0.9330];
+    maroon = [0.6350 0.0780 0.1840];
+    black = [0 0 0];
+    color = [green;maroon];
+    %%
+
+% Plot format control variables
+    lw = 3;            % Line width
+    ms = 6;            % Marker size
+    ax_fnt = 23;        % Axis font size
+    lbl_fnt = 25; % Label font size
+    leg_fnt = 17; % Legend font size
+    ax_lw = 4;        % Axis line width
+
+
+%---------    
+% figure(1)
+% quiver(X,Y,Xdot,Ydot,'color',[0.75  0.75   0.75],'linewidth',1);hold on;
+% plot(xd,yd,'k','linewidth',lw);
+% plot(x(:,1),x(:,2),'Color',red,'linewidth',lw);hold on;
+% plot(x_ini,y_ini,'-o','linewidth',2,'MarkerSize',10,...
+%     'MarkerEdgeColor','black',...
+%     'MarkerFaceColor','green'); hold on;
+% plot(x_end,y_end,'-s','linewidth',2,'MarkerSize',10,...
+%     'MarkerEdgeColor','black',...
+%     'MarkerFaceColor','cyan'); hold on;
+% ax1 = gca;
+% ax1.FontSize = ax_fnt;
+% box on                      % Switch on the box around the axis
+% ax1.XColor = 'black';         % Box horizontal lines' color
+% ax1.YColor = 'black';         % Box vertical lines' color
+% set(ax1,'linewidth',ax_lw) ;
+% xlabel(ax1,' $ x, $ m','Fontsize',lbl_fnt);
+% ylabel(ax1,'$ y, $ m','Fontsize',lbl_fnt);
+% legend(ax1,'Vector field','Desired path','UAV trajectory','','','Fontsize',leg_fnt);
+% axis(ax1, 'equal')
+% 
+% figure(2)
+% plot(t,path_error,'Color',red,'LineWidth',lw);hold on;grid on;
+% ax2 = gca;
+% ax2.FontSize = ax_fnt;
+% box on                      % Switch on the box around the axis
+% ax2.XColor = 'black';         % Box horizontal lines' color
+% ax2.YColor = 'black';         % Box vertical lines' color
+% set(ax2,'linewidth',ax_lw) ;
+% xlabel(ax2,' $t$, s','Fontsize',lbl_fnt);
+% ylabel(ax2,'$$(f(x) - y)$$, m','Fontsize',lbl_fnt);
+% 
+% figure(3)
+% plot(t,wrapToPi(kai_des)*(180/pi),'-g','linewidth',lw);hold on; grid on;
+% plot(t,wrapToPi(x(:,3))*(180/pi),'--b','linewidth',lw);hold on; grid on;
+% plot(t,wrapToPi(kai_p)*(180/pi),'Color',red,'linewidth',lw);hold on; grid on;
+% plot(t,wrapToPi(kai_o)*(180/pi),'-k','linewidth',lw);hold on; grid on;
+% ax3 = gca;
+% ax3.FontSize = ax_fnt;
+% box on                        % Switch on the box around the axis
+% ax3.XColor = 'black';         % Box horizontal lines' color
+% ax3.YColor = 'black';         % Box vertical lines' color
+% set(ax3,'linewidth',ax_lw) ;
+% xlabel(ax3,' $ t, $ s','Fontsize',lbl_fnt);
+% ylabel(ax3,' $ \chi$, deg.','Fontsize',lbl_fnt);
+% legend(ax3,'Commanded','Achieved','Slope on the path','Shaping function','Fontsize',leg_fnt);
+% 
+% figure(4)
+% plot(path_error,wrapToPi(kai_des)*(180/pi),'r','linewidth',lw);hold on; grid on;
+% plot(path_error,wrapToPi(x(:,3))*(180/pi),'--b','linewidth',lw);
+% ax4 = gca;
+% ax4.FontSize = ax_fnt;
+% box on                      % Switch on the box around the axis
+% ax4.XColor = 'black';         % Box horizontal lines' color
+% ax4.YColor = 'black';         % Box vertical lines' color
+% set(ax4,'linewidth',ax_lw) ;
+% xlabel(ax4,'Tracking error,  m','Fontsize',lbl_fnt);
+% ylabel(ax4,'$ \chi $, deg.','Fontsize',lbl_fnt);
+% legend(ax4,'Commanded','Achieved','Fontsize',leg_fnt);
+% grid on;
+% 
+% figure(5)
+% % plot(t,kaidot_des,'m','LineWidth',2);hold on;
+% plot(t,x(:,4),'-m','LineWidth',lw);hold on; grid on;
+% ax5 = gca;
+% ax5.FontSize = ax_fnt;
+% box on                      % Switch on the box around the axis
+% ax5.XColor = 'black';         % Box horizontal lines' color
+% ax5.YColor = 'black';         % Box vertical lines' color
+% set(ax5,'linewidth',ax_lw) ;
+% xlabel(ax5,' $ t, $ s','Fontsize',lbl_fnt);
+% ylabel(ax5,' $\dot{\chi}$,  rad./s ','Fontsize',lbl_fnt);
+% % legend(ax5,'Commanded','Achieved','Fontsize',leg_fnt);
+% grid on;
+% 
+% figure(6)
+% % plot(t,kappa_des,'m','LineWidth',2);hold on; grid on;
+% plot(t,kappa_actual,'Color',red,'LineWidth',lw);hold on; grid on;
+% ax6 = gca;
+% ax6.FontSize = ax_fnt;
+% box on                      % Switch on the box around the axis
+% ax6.XColor = 'black';         % Box horizontal lines' color
+% ax6.YColor = 'black';         % Box vertical lines' color
+% set(ax6,'linewidth',ax_lw) ;
+% xlabel(ax6,' $ t, $  s','Fontsize',lbl_fnt);
+% ylabel(ax6,' $$\kappa$$, m $ ^{-1} $ ','Fontsize',lbl_fnt);
+% % legend(ax6,'Commanded','Achieved','Fontsize',leg_fnt);
+% grid on;
+% 
+% figure(7)
+% % plot(path_error,kaidot_des,'m','LineWidth',2);hold on;
+% plot(path_error,x(:,4),'-m','LineWidth',lw);hold on; grid on;
+% ax7 = gca;
+% ax7.FontSize = ax_fnt;
+% box on                      % Switch on the box around the axis
+% ax7.XColor = 'black';         % Box horizontal lines' color
+% ax7.YColor = 'black';         % Box vertical lines' color
+% set(ax7,'linewidth',ax_lw) ;
+% xlabel(ax7,'Tracking  error, m','Fontsize',lbl_fnt);
+% ylabel(ax7,'$\dot{\chi}$,  rad./s ','Fontsize',lbl_fnt);
+% % legend(ax7,'Commanded','Achieved','Fontsize',leg_fnt);
+% grid on;
+% %
+% figure(8)
+% % plot(path_error,kappa_des,'m','LineWidth',2);hold on; grid on;
+% plot(path_error,kappa_actual,'-m','LineWidth',lw);hold on; grid on;
+% ax8 = gca;
+% ax8.FontSize = ax_fnt;
+% box on                        % Switch on the box around the axis
+% ax8.XColor = 'black';         % Box horizontal lines' color
+% ax8.YColor = 'black';         % Box vertical lines' color
+% set(ax8,'linewidth',ax_lw) ;
+% xlabel(ax8,'Tracking error,  m','Fontsize',lbl_fnt);
+% ylabel(ax8,'Curvature $$\kappa$$,  m $ ^{-1} $ ','Fontsize',lbl_fnt);
+% % legend(ax8,'Commanded','Achieved','Fontsize',leg_fnt);
+% grid on;
+
+% figure(9)
+% plot(t,Vgd*ones(size(t)),'r','linewidth',2);hold on;
+% plot(t,Vg,'b','linewidth',2);
+% ax9 = gca;
+% ax9.FontSize = 16;
+% box on                      % Switch on the box around the axis
+% ax9.XColor = 'black';         % Box horizontal lines' color
+% ax9.YColor = 'black';         % Box vertical lines' color
+% set(ax9,'linewidth',1.5) ;
+% xlabel(ax9,' $ t, $ s','Fontsize',lbl_fnt);
+% ylabel(ax9,' $ V_{\mathrm{g}}, $ m/s ','Fontsize',lbl_fnt);
+% % axis(ax9,[0 t(end,1) 0 30]);
+% legend(ax9,'Desired','Actual','Fontsize',leg_fnt);
+% grid on;
+% 
+% figure(10)
+% plot(t,Vad,'r','linewidth',2);hold on;grid on;
+% plot(t,x(:,5),'b','linewidth',2);grid on;
+% ax10 = gca;
+% ax10.FontSize = 16;
+% box on                      % Switch on the box around the axis
+% ax10.XColor = 'black';         % Box horizontal lines' color
+% ax10.YColor = 'black';         % Box vertical lines' color
+% set(ax10,'linewidth',1.5) ;
+% xlabel(ax10,' $ t, $ s','Fontsize',lbl_fnt);
+% ylabel(ax10,' $ V_{\mathrm{a}}, $ m/s ','Fontsize',lbl_fnt);
+% % axis(ax10,[0 t(end,1) 0 30]);
+% legend(ax10,'Desired','Actual','Fontsize',leg_fnt);
+
+%% Figure 1: Trajectory with Vector Field
+figure(1)
+fig = gcf;
+fig.WindowState = 'maximized';
+xp = plot(xd,yd,'k','linewidth',lw);hold on;grid on;
+quiver(X,Y,Xdot,Ydot,0.7,'color',[0.2 0.6 0.8],'linewidth',1.5);hold on;
+h_traj = plot(x(:,1),x(:,2),'color',maroon,'linewidth',lw);hold on;
+h12 = plot(x_ini,y_ini,'-o','LineWidth',2,...
+    'MarkerEdgeColor','k',...
+    'MarkerFaceColor','g',...
+    'MarkerSize',10); hold on;
+h12.Annotation.LegendInformation.IconDisplayStyle = 'off';
+ax1 = gca;
+ax1.FontSize = ax_fnt;
+box on
+ax1.XColor = 'black';
+ax1.YColor = 'black';
+set(ax1,'linewidth',ax_lw)
+xlabel(ax1,' $$ x, $$  m','Fontsize',lbl_fnt);
+ylabel(ax1,'$$ y, $$  m','Fontsize',lbl_fnt);
+legend(ax1,'Desired sinusoidal path','Vector field','UAV trajectory','Initial position','Fontsize',leg_fnt);
+axis(ax1,'equal')
+
+%% Figure 2: Path error vs time
+figure(2)
+fig = gcf;
+fig.WindowState = 'maximized';
+ax2 = gca;
+plot(t,path_error,'color',maroon,'LineWidth',lw);
+ax2.FontSize = ax_fnt;
+box on
+ax2.XColor = 'black';
+ax2.YColor = 'black';
+set(ax2,'linewidth',ax_lw)
+xlabel(ax2,' $$ t, $$ s','Fontsize',lbl_fnt);
+ylabel(ax2,'$$ e, $$ m','Fontsize',lbl_fnt);
+grid on;
+
+%% Figure 3: Course angle vs time
+figure(3)
+fig = gcf;
+fig.WindowState = 'maximized';
+ax3 = gca;
+plot(t,x(:,3)*180/pi,'color',maroon,'LineWidth',lw);hold on;
+plot(t,kaid_des*180/pi,'--','color',blue,'LineWidth',lw);
+ax3.FontSize = ax_fnt;
+box on
+ax3.XColor = 'black';
+ax3.YColor = 'black';
+set(ax3,'linewidth',ax_lw)
+xlabel(ax3,' $$ t, $$ s','Fontsize',lbl_fnt);
+ylabel(ax3,'$$ \\chi, $$ deg','Fontsize',lbl_fnt);
+legend('Actual','Desired','Fontsize',leg_fnt);
+grid on;
+
+%% Figure 4: Curvature vs time
+figure(4)
+fig = gcf;
+fig.WindowState = 'maximized';
+ax4 = gca;
+plot(t,kappa_actual,'color',maroon,'LineWidth',lw);hold on;
+plot(t,kappa_des,'--','color',blue,'LineWidth',lw);
+ax4.FontSize = ax_fnt;
+box on
+ax4.XColor = 'black';
+ax4.YColor = 'black';
+set(ax4,'linewidth',ax_lw)
+xlabel(ax4,' $$ t, $$ s','Fontsize',lbl_fnt);
+ylabel(ax4,'$$ \\kappa, $$ m$$^{-1}$$','Fontsize',lbl_fnt);
+legend('Actual','Desired','Fontsize',leg_fnt);
+grid on;
+
+%% Figure 5: Animation with Fixed-Wing UAV Marker
+figure(5)
+fig = gcf;
+fig.WindowState = 'maximized';
+ax5 = gca;
+xp = plot(xd,yd,'k','linewidth',lw);hold on;grid on;
+quiver(X,Y,Xdot,Ydot,0.7,'color',[0.2 0.6 0.8],'linewidth',1.5);hold on;
+plot(x_ini,y_ini,'-o','LineWidth',2,...
+    'MarkerEdgeColor','k',...
+    'MarkerFaceColor','g',...
+    'MarkerSize',10); hold on;
+ax5.FontSize = ax_fnt;
+box on
+ax5.XColor = 'black';
+ax5.YColor = 'black';
+set(ax5,'linewidth',ax_lw)
+xlabel(ax5,' $$ x, $$  m','Fontsize',lbl_fnt);
+ylabel(ax5,'$$ y, $$  m','Fontsize',lbl_fnt);
+axis(ax5,'equal')
+
+% Initialize trajectory trail and UAV marker
+h_trail = plot(nan, nan, 'color', maroon, 'linewidth', lw);
+
+% Create fixed-wing UAV shape (triangle pointing in direction of motion)
+uav_size = 5;
+uav_shape_x = uav_size*[-1, 2, -1, -1];
+uav_shape_y = uav_size*[-1, 0, 1, -1];
+h_uav = fill(nan, nan, green, 'EdgeColor', black, 'LineWidth', 2);
+
+legend('Desired sinusoidal path','Vector field','Initial position','Trajectory','UAV','Fontsize',leg_fnt);
+
+% Setup video writer
+video_filename = sprintf('sinusoidal_path_animation.mp4');
+vidObj = VideoWriter(video_filename, 'MPEG-4');
+vidObj.FrameRate = 10;
+vidObj.Quality = 95;
+open(vidObj);
+
+% Animation loop
+dt_anim = 0.1;
+t_anim = 0:dt_anim:t(end);
+for i = 1:length(t_anim)
+    % Interpolate position and heading at current animation time
+    x_curr = interp1(t, x(:,1), t_anim(i));
+    y_curr = interp1(t, x(:,2), t_anim(i));
+    chi_curr = interp1(t, x(:,3), t_anim(i));
+    
+    % Update trajectory trail
+    idx = find(t <= t_anim(i));
+    set(h_trail, 'XData', x(idx,1), 'YData', x(idx,2));
+    
+    % Rotate and translate UAV shape
+    R = [cos(chi_curr), -sin(chi_curr); sin(chi_curr), cos(chi_curr)];
+    uav_rotated = R * [uav_shape_x; uav_shape_y];
+    uav_x = uav_rotated(1,:) + x_curr;
+    uav_y = uav_rotated(2,:) + y_curr;
+    
+    set(h_uav, 'XData', uav_x, 'YData', uav_y);
+    
+    title(ax5, sprintf('Time: %.2f s', t_anim(i)), 'Fontsize', lbl_fnt);
+    drawnow;
+    
+    % Capture frame for video
+    frame = getframe(gcf);
+    writeVideo(vidObj, frame);
+end
+
+% Close video writer
+close(vidObj);
+fprintf('Animation saved to: %s\n', video_filename);
+
+disp('Animation complete!');
+
+%% Save trajectory data to .mat file
+trajectory_data.time = t;
+trajectory_data.position_x = x(:,1);
+trajectory_data.position_y = x(:,2);
+trajectory_data.course_angle = x(:,3);
+trajectory_data.course_angle_rate = x(:,4);
+trajectory_data.course_angle_desired = kaid_des;
+trajectory_data.course_angle_rate_desired = kaidot_des;
+trajectory_data.curvature_actual = kappa_actual;
+trajectory_data.curvature_desired = kappa_des;
+trajectory_data.path_error = path_error;
+trajectory_data.initial_conditions = x_initial;
+trajectory_data.parameters.Vgd = Vgd;
+trajectory_data.parameters.k2 = k2;
+trajectory_data.parameters.k_kai = k_kai;
+trajectory_data.parameters.k_kaidot = k_kaidot;
+trajectory_data.parameters.A = A;
+trajectory_data.parameters.omega = omega;
+trajectory_data.vector_field.X = X;
+trajectory_data.vector_field.Y = Y;
+trajectory_data.vector_field.Xdot = Xdot;
+trajectory_data.vector_field.Ydot = Ydot;
+
+% Save with timestamp
+filename = sprintf('sinusoidal_path_trajectory.mat');
+save(filename, 'trajectory_data');
+fprintf('Trajectory data saved to: %s\n', filename);
+
+function out = fun_sinusoidal(t,x)
+global Vgd k2  k_kai k_kaidot A omega
+
+dydx = A*omega*cos(omega.*x(1));
+kai_p =  atan(dydx);
+epsilon =  A*sin(omega.*x(1)) - x(2);
+kai_o = pi/2 - asin(1./(1 + k2*(epsilon).^2)) ;
+out(1,1) = Vgd*cos(x(3)) ;
+out(2,1) = Vgd*sin(x(3)) ;
+if epsilon < 0
+    kaid = (kai_p) - kai_o;
+    xdot = out(1,1);
+    ydot = out(2,1);
+    kaip_dot = -(A*omega^2 *sin(omega*x(1))*xdot)./(1 + (tan(kai_p)).^2);
+    factor_1 = (2*k2)/((1 + k2*(epsilon).^2).*(sqrt(2*k2 + (k2*epsilon).^2)));
+    epsilon_dot = A*omega*cos(omega*x(1))*xdot - ydot;
+    kaio_dot = factor_1*epsilon_dot;
+    kaid_dot = kaip_dot - kaio_dot;
+else
+    kaid = (kai_p) + kai_o ;
+    xdot = out(1,1);
+    ydot = out(2,1);
+    kaip_dot = -(A*omega^2 *sin(omega*x(1))*xdot)./(1 + (tan(kai_p)).^2);
+    factor_1 = (2*k2)/((1 + k2*(epsilon).^2).*(sqrt(2*k2 + (k2*epsilon).^2)));
+    epsilon_dot = A*omega*cos(omega*x(1))*xdot - ydot;
+    kaio_dot = factor_1*epsilon_dot;
+    kaid_dot = kaip_dot + kaio_dot;
+end
+% [kaid, kaid_dot] = fun_propkaid(x(1),x(2));
+
+
+out(3,1) = x(4) ;
+out(4,1) = k_kai*(kaid - x(3)) + k_kaidot*(kaid_dot - x(4) )  ;
+
+end
+
+
+
+function [kaid] = vf_sinusoidal(X,Y)
+global Vgd  k2 A omega 
+dydx = A*omega*cos(omega.*X);
+kai_p_des = atan(dydx);
+epsilon =  A*sin(omega.*X) - Y;
+kai_o = pi/2 - asin(1./(1 + k2*(epsilon).^2));
+
+for i = 1:length(X)
+    for j = 1:length(X)
+        if epsilon(i,j)< 0
+            
+            kaid(i,j) = (kai_p_des(1,j)) - kai_o(i,j)  ;
+        else
+            kaid(i,j) = (kai_p_des(1,j)) + kai_o(i,j) ;
+        end
+    end
+end
+end
+
+function [kai_p,kai_o,kai_des, kaidot_des] = fun_propkaid(x1,x2)
+global  Vgd k2 A  omega 
+
+for i = 1:length(x1)
+dydx(i,:) = A.*omega*cos(omega*x1(i,:));
+kai_p(i,:) = atan(dydx(i,:));
+epsilon(i,:) = A.*sin(omega*x1(i,:)) - x2(i,:);
+kai_o(i,:) = pi/2 - asin(1./(1 + k2*(epsilon(i,:)).^2)) ;
+if epsilon(i,:) < 0
+    kai_des(i,:)     = kai_p(i,:) - kai_o(i,:);
+    xdot(i,:)        = Vgd*cos(kai_des(i,:));
+    ydot(i,:)        = Vgd*sin(kai_des(i,:));
+    kaip_dot(i,:)    = -(A*omega^2*sin(omega*x1(i,:)).*xdot(i,:))./(1 + (tan(kai_p(i,:)))^2);
+    factor_1(i,:)    = (2*k2)./((1 + k2*(epsilon(i,:)).^2).*(sqrt(2*k2 + (k2*epsilon(i,:)).^2)));
+    epsilon_dot(i,:) = A*omega*cos(omega*x1(i,:))*xdot(i,:) - ydot(i,:);
+    kaio_dot(i,:)    = factor_1(i,:)*epsilon_dot(i,:);
+    kaidot_des(i,:)  = kaip_dot(i,:) - kaio_dot(i,:);
+else
+    kai_des(i,:)     = kai_p(i,:) + kai_o(i,:);
+    xdot(i,:)        = Vgd*cos(kai_des(i,:));
+    ydot(i,:)        = Vgd*sin(kai_des(i,:));
+    kaip_dot(i,:)    = -(A*omega^2*sin(omega*x1(i,:)).*xdot(i,:))./(1 + (tan(kai_p(i,:)))^2);
+    factor_1(i,:)    = (2*k2)/((1 + k2*(epsilon(i,:)).^2).*(sqrt(2*k2 + (k2*epsilon(i,:)).^2)));
+    epsilon_dot(i,:) =  A*omega*cos(omega*x1(i,:))*xdot(i,:) - ydot(i,:);
+    kaio_dot(i,:)    = factor_1(i,:)*epsilon_dot(i,:);
+    kaidot_des(i,:)  = kaip_dot(i,:) + kaio_dot(i,:);
+end
+end
+
+end
+
+function [value,isterminal,direction] = stopping_sinusoidal(t,x)
+global  omega A
+
+value(1) = ( (A*sin(omega*x(1))) - x(2)) + 0.02; 
+isterminal(1) = 1; % stop the integration(once the condition is met stop the integration)
+direction(1) = 0; % negative direction(as R decreases from positive to zero d=-1;If R increases from negative to zero d=+1;d=0 implies no need of direction )
+
+end
+
+% function out = fun_griffiths_sinusoidal(t,y)
+% global Vgd k2  k_kai k_kaidot A omega
+% k = sqrt(k2*y(1).^2 + 2*k2);
+% dydx = A*omega*cos(omega.*y(1));
+% kai_p = atan(dydx);
+% epsilon =  A*sin(omega.*y(1)) - y(2);
+% epsilon_x = A*omega*cos(omega.*y(1));
+% epsilon_y = -1;
+% 
+% kai_o =  atan(k.*(epsilon)) ;
+% if epsilon < 0
+%     kaid = (kai_p) - kai_o;
+%     xdot = Vgd*cos(kaid);
+%     ydot = Vgd*sin(kaid);
+%     kaip_dot = (k.*(epsilon_x*xdot + epsilon_y.*ydot))./(1 + (tan(kai_p)).^2);
+%     factor_1 = (k./(1 + (tan(kai_o)).^2));
+%     epsilon_dot = A*omega*cos(omega*y(1))*xdot -ydot;
+%     kaio_dot = factor_1*epsilon_dot;
+%     kaid_dot = kaip_dot - kaio_dot;
+% else
+%     kaid = (kai_p) + kai_o ;
+%     xdot = Vgd*cos(kaid);
+%     ydot = Vgd*sin(kaid);
+%      kaip_dot = (k.*(epsilon_x*xdot + epsilon_y.*ydot))./(1 + (tan(kai_p)).^2);
+%     factor_1 = (k./(1 + (tan(kai_o)).^2));
+%     epsilon_dot = A*omega*cos(omega*y(1))*xdot -ydot;
+%     kaio_dot = factor_1*epsilon_dot;
+%     kaid_dot = kaip_dot + kaio_dot;
+% end
+% 
+% out(1,1) = Vgd*cos(y(3)) ;
+% out(2,1) = Vgd*sin(y(3)) ;
+% out(3,1) = y(4) ;
+% out(4,1) = k_kai*(kaid - y(3)) + k_kaidot*(kaid_dot - y(4) )  ;
+% 
+% end
