@@ -1,4 +1,4 @@
-# Curvature-Aware Arcsine Vector Field Guidance for UAV Path Following
+# Arcsine Vector Field Guidance for UAV Path Following
 
 This repository contains MATLAB implementations, simulation studies, and demonstration videos associated with the following publication:
 
@@ -40,6 +40,21 @@ The method is compared against the classical vector field guidance law of Nelson
 - Extension to general curvature paths
 
 ---
+## Representative Results
+
+### Trajectory Demonstrations
+<table>
+  <tr>
+    <td align="center">
+      <b>Straight-Line Path Following</b><br>
+      <img src="figures/straight_line.gif" width="430">
+    </td>
+    <td align="center">
+      <b>Circular Orbit Following</b><br>
+      <img src="figures/circular_orbit_demo.gif" width="430">
+    </td>
+  </tr>
+</table>
 
 # Repository Structure
 
