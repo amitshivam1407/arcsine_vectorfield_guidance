@@ -47,7 +47,7 @@ The method is compared against the classical vector field guidance law of Nelson
   <tr>
     <td align="center">
       <b>Straight-Line Path Following</b><br>
-      <img src="figures/straight_line.gif" width="430">
+      <img src="figures/straight_line_demo.gif" width="430">
     </td>
     <td align="center">
       <b>Circular Orbit Following</b><br>
